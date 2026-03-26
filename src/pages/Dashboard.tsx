@@ -91,76 +91,80 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             <div className="dashboard-container">
                 {/* Saved Custom Reports Section */}
                 {loadingSaved ? (
-                    <div className="flex flex-col items-center justify-center py-20">
-                        <div className="loader-logo-wrapper !mb-4 scale-75">
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '5rem 0' }}>
+                        <div className="loader-logo-wrapper" style={{ marginBottom: '1rem', transform: 'scale(0.75)' }}>
                             <div className="loader-ring" />
                             <div className="loader-ring" />
                             <RefreshCw size={32} className="loader-icon" />
                         </div>
-                        <div className="loader-text !text-[10px]">Syncing Intelligence...</div>
+                        <div className="loader-text" style={{ fontSize: '0.7rem' }}>Syncing Intelligence...</div>
                     </div>
-                ) : (currentView === 'shared' ? savedReports.filter(r => r.config?.preferences?.shareWith === 'Everyone') : savedReports.filter(r => r.config?.preferences?.shareWith !== 'Everyone')).length > 0 && !selectedCategory && !searchQuery ? (
+                ) : (currentView === 'shared' ? savedReports.filter(r => r.config?.preferences?.shareWith !== 'Only Me') : savedReports.filter(r => r.config?.preferences?.shareWith === 'Only Me')).length > 0 && !selectedCategory && !searchQuery ? (
                     <section className="mb-16">
                         <div className="section-header-modern">
-                            <div className="section-icon-box" style={{ background: currentView === 'shared' ? '#eff6ff' : '#fef2f2', color: currentView === 'shared' ? '#3b82f6' : '#ef4444' }}>
+                            <div className="section-icon-box" style={{ background: currentView === 'shared' ? 'var(--color-primary-light)' : 'var(--color-danger-light, rgba(239, 68, 68, 0.1))', color: currentView === 'shared' ? 'var(--color-primary)' : 'var(--color-danger)' }}>
                                 {currentView === 'shared' ? <Share2 size={20} /> : <Bookmark size={20} />}
                             </div>
                             <h2 className="section-title-modern">
-                                {currentView === 'shared' ? 'Organization Intelligence' : 'Private Custom Reports'}
-                                <span className="count-badge-modern" style={{ background: currentView === 'shared' ? '#3b82f6' : '#ef4444' }}>
-                                    {(currentView === 'shared' ? savedReports.filter(r => r.config?.preferences?.shareWith === 'Everyone') : savedReports.filter(r => r.config?.preferences?.shareWith !== 'Everyone')).length}
+                                {currentView === 'shared' ? 'Shared Intelligence' : 'Private Custom Reports'}
+                                <span className="count-badge-modern" style={{ background: currentView === 'shared' ? 'var(--color-primary)' : 'var(--color-danger)', color: '#ffffff' }}>
+                                    {(currentView === 'shared'
+                                        ? savedReports.filter(r => r.config?.preferences?.shareWith !== 'Only Me')
+                                        : savedReports.filter(r => r.config?.preferences?.shareWith === 'Only Me')).length}
                                 </span>
                             </h2>
                         </div>
 
                         <div className="report-grid">
-                            {(currentView === 'shared' ? savedReports.filter(r => r.config?.preferences?.shareWith === 'Everyone') : savedReports.filter(r => r.config?.preferences?.shareWith !== 'Everyone')).map((report) => (
-                                <div
-                                    key={report.id}
-                                    className="saved-report-card"
-                                    onClick={() => navigate(`/report/${report.id}?custom=true`)}
-                                >
-                                    <div className="card-decoration" />
-                                    <div className="card-header-top">
-                                        <div className="card-icon-wrapper">
-                                            <FileText size={20} />
+                            {(currentView === 'shared'
+                                ? savedReports.filter(r => r.config?.preferences?.shareWith !== 'Only Me')
+                                : savedReports.filter(r => r.config?.preferences?.shareWith === 'Only Me')).map((report) => (
+                                    <div
+                                        key={report.id}
+                                        className="saved-report-card"
+                                        onClick={() => navigate(`/report/${report.id}?custom=true`)}
+                                    >
+                                        <div className="card-decoration" />
+                                        <div className="card-header-top">
+                                            <div className="card-icon-wrapper">
+                                                <FileText size={20} />
+                                            </div>
+                                            <div className="table-id-badge">{report.table_id}</div>
                                         </div>
-                                        <div className="table-id-badge">{report.table_id}</div>
-                                    </div>
 
-                                    <h3 className="card-title">{report.name}</h3>
+                                        <h3 className="card-title">{report.name}</h3>
 
-                                    <div className="card-meta">
-                                        <div className="meta-item">
-                                            <User size={12} strokeWidth={3} />
-                                            <span>Custom Architect</span>
+                                        <div className="card-meta">
+                                            <div className="meta-item">
+                                                <User size={12} strokeWidth={3} />
+                                                <span>Custom Architect</span>
+                                            </div>
+                                            <div className="meta-item">
+                                                <Clock size={12} strokeWidth={3} />
+                                                <span>{new Date(report.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                            </div>
                                         </div>
-                                        <div className="meta-item">
-                                            <Clock size={12} strokeWidth={3} />
-                                            <span>{new Date(report.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+
+                                        <div className="column-tags">
+                                            {report.columns.filter((col: string) => col !== 'prov_ins_file').slice(0, 3).map((col: string) => (
+                                                <span key={col} className="column-tag">
+                                                    {col}
+                                                </span>
+                                            ))}
+                                            {report.columns.length > 3 && (
+                                                <span className="column-tag more">
+                                                    +{report.columns.length - 3} More
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="mt-6 flex justify-end">
+                                            <div className="bg-slate-50 p-2 rounded-lg text-slate-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-all">
+                                                <ChevronRight size={16} strokeWidth={3} />
+                                            </div>
                                         </div>
                                     </div>
-
-                                    <div className="column-tags">
-                                        {report.columns.filter((col: string) => col !== 'prov_ins_file').slice(0, 3).map((col: string) => (
-                                            <span key={col} className="column-tag">
-                                                {col}
-                                            </span>
-                                        ))}
-                                        {report.columns.length > 3 && (
-                                            <span className="column-tag more">
-                                                +{report.columns.length - 3} More
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div className="mt-6 flex justify-end">
-                                        <div className="bg-slate-50 p-2 rounded-lg text-slate-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-all">
-                                            <ChevronRight size={16} strokeWidth={3} />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                                ))}
                         </div>
                     </section>
                 ) : null}
@@ -196,7 +200,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                     </section>
                 ))}
 
-                {Object.keys(groupedReports()).length === 0 && (currentView === 'shared' ? savedReports.filter(r => r.config?.preferences?.shareWith === 'Everyone') : savedReports.filter(r => r.config?.preferences?.shareWith !== 'Everyone')).length === 0 && (
+                {Object.keys(groupedReports()).length === 0 && (currentView === 'shared' ? savedReports.filter(r => r.config?.preferences?.shareWith !== 'Only Me') : savedReports.filter(r => r.config?.preferences?.shareWith === 'Only Me')).length === 0 && (
                     <div className="empty-state">
                         <div className="cr-flex cr-items-center cr-justify-center" style={{ width: '5rem', height: '5rem', background: '#f8fafc', borderRadius: '1.5rem', marginBottom: '2rem', color: '#94a3b8' }}>
                             {currentView === 'shared' ? <Share2 size={32} /> : <Search size={32} />}

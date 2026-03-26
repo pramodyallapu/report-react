@@ -168,7 +168,7 @@ export default function CustomReportWizard({ onClose, onSave }: CustomReportWiza
     const [savedReportId, setSavedReportId] = useState<number | null>(null);
     const [isCopying, setIsCopying] = useState(false);
     // Form State
-    const [config, setConfig] = useState({
+    const [config, setConfig] = useState(() => ({
         dateRange: 'Today',
         compareBasedOn: 'Period/Year',
         compareWith: 'None',
@@ -195,10 +195,11 @@ export default function CustomReportWizard({ onClose, onSave }: CustomReportWiza
             reportName: '',
             nameInExport: '',
             description: '',
-            shareWith: 'Only Me',
-            sharedEmails: ''
+            shareWith: 'Protected Link',
+            sharedEmails: '',
+            sharePassword: Math.random().toString(36).slice(-5) + Math.floor(Math.random() * 999).toString() // Generate secure default
         }
-    });
+    }));
 
     // Hardcoded fallback data in case API fails
     const FALLBACK_CATEGORIES = [
@@ -248,20 +249,12 @@ export default function CustomReportWizard({ onClose, onSave }: CustomReportWiza
     }, []);
 
     // Filter tables based on search
-    const groupedReports = useMemo(() => {
-        if (!categories.length || !tables.length) return [];
-
-        return categories.map(cat => {
-            const catTables = tables.filter(t =>
-                t.category_id === cat.id &&
-                t.name.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-            return {
-                ...cat,
-                tables: catTables
-            };
-        }).filter(group => group.tables.length > 0);
-    }, [categories, tables, searchQuery]);
+    const filteredTables = useMemo(() => {
+        if (!tables.length) return [];
+        return tables
+            .filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [tables, searchQuery]);
 
     // Fetch Preview Data when entering Step 3
     useEffect(() => {
@@ -379,18 +372,17 @@ export default function CustomReportWizard({ onClose, onSave }: CustomReportWiza
                                             onClick={(e) => e.stopPropagation()}
                                         />
                                     </div>
-                                    {groupedReports.map(group => (
-                                        <div key={group.id} style={{ marginBottom: '1rem' }}>
-                                            <div style={{ padding: '0 0.5rem', fontSize: '0.625rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{group.name}</div>
-                                            {group.tables.map((table: any) => (
-                                                <div
-                                                    key={table.id}
-                                                    style={{ padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer', background: selectedTable?.id === table.id ? '#2563eb' : 'transparent', color: selectedTable?.id === table.id ? 'white' : '#475569', fontWeight: '600', fontSize: '0.875rem' }}
-                                                    onClick={(e) => { e.stopPropagation(); handleTableSelect(table); setIsDropdownOpen(false); }}
-                                                >
-                                                    {table.name}
-                                                </div>
-                                            ))}
+                                    <div style={{ padding: '0 0.5rem', fontSize: '0.625rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>All Data Sources</div>
+                                    {filteredTables.map((table: any) => (
+                                        <div
+                                            key={table.id}
+                                            style={{ padding: '0.75rem', borderRadius: '0.75rem', cursor: 'pointer', background: selectedTable?.id === table.id ? '#2563eb' : 'transparent', color: selectedTable?.id === table.id ? 'white' : '#475569', fontWeight: '600', fontSize: '0.875rem', marginBottom: '0.25rem' }}
+                                            onClick={(e) => { e.stopPropagation(); handleTableSelect(table); setIsDropdownOpen(false); }}
+                                        >
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span>{table.name}</span>
+                                                {table.description && <span style={{ fontSize: '0.7rem', color: selectedTable?.id === table.id ? 'rgba(255,255,255,0.8)' : '#94a3b8', marginTop: '0.125rem' }}>{table.description}</span>}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -697,13 +689,21 @@ export default function CustomReportWizard({ onClose, onSave }: CustomReportWiza
 
                 <div className="cr-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                     {[
-                        { id: 'Only Me', desc: 'Private', color: '#f43f5e' },
-                        { id: 'Selected Users', desc: 'Restricted', color: '#f59e0b' },
-                        { id: 'Everyone', desc: 'Public', color: '#10b981' }
+                        { id: 'Protected Link', desc: 'Secure Share', color: '#f59e0b' },
+                        { id: 'Selected Users', desc: 'Restricted', color: '#8b5cf6' },
+                        { id: 'Organization', desc: 'Public', color: '#10b981' }
                     ].map(opt => (
                         <div
                             key={opt.id}
-                            onClick={() => setConfig({ ...config, preferences: { ...config.preferences, shareWith: opt.id } })}
+                            onClick={() => {
+                                setConfig({
+                                    ...config,
+                                    preferences: {
+                                        ...config.preferences,
+                                        shareWith: opt.id
+                                    }
+                                });
+                            }}
                             className="cr-flex cr-flex-col cr-items-center cr-gap-6"
                             style={{ padding: '2.5rem 1.5rem', borderRadius: '2rem', border: '2px solid', borderColor: config.preferences.shareWith === opt.id ? '#2563eb' : '#f1f5f9', background: config.preferences.shareWith === opt.id ? '#eff6ff' : 'white', cursor: 'pointer', transition: 'all 0.2s', position: 'relative' }}
                         >
@@ -753,14 +753,19 @@ export default function CustomReportWizard({ onClose, onSave }: CustomReportWiza
                 <div style={{ flex: 1 }}>
                     <span className="cr-label" style={{ color: '#0f172a', marginBottom: '0.25rem', display: 'block' }}>Intelligence Access Link</span>
                     <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0, fontWeight: '500' }}>
-                        {config.preferences.shareWith === 'Everyone' ? 'Anyone with this link across your organization can view this report.' :
+                        {config.preferences.shareWith === 'Protected Link' ? 'Strictly protected link requiring the generated password.' :
                             config.preferences.shareWith === 'Selected Users' ? 'Only authorized recipients listed above can access this intelligence via the link.' :
-                                'Strictly Private. Access is locked to your account identity only.'}
+                                'Anyone with this link and password across your organization can view this report.'}
                     </p>
                     <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <code style={{ background: 'white', padding: '0.5rem 1rem', borderRadius: '0.75rem', fontSize: '0.875rem', color: '#2563eb', fontWeight: '700', border: '1px solid #e2e8f0' }}>
-                            {window.location.origin}/report/[ID]
+                            {window.location.origin}/shared/[ID]
                         </code>
+                        {config.preferences.sharePassword && (
+                            <span style={{ fontSize: '0.875rem', color: '#10b981', fontWeight: '700', paddingLeft: '1rem' }}>
+                                Requires Password 🔒
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
@@ -787,30 +792,42 @@ export default function CustomReportWizard({ onClose, onSave }: CustomReportWiza
                     <span className="cr-label" style={{ color: '#065f46', marginBottom: 0 }}>Intelligence Access Link</span>
                 </div>
 
-                <div className="cr-flex cr-items-center cr-gap-3" style={{ background: 'white', padding: '1rem', borderRadius: '1.25rem', border: '1px solid #d1fae5', position: 'relative' }}>
-                    <code style={{ flex: 1, textAlign: 'left', fontSize: '1rem', color: '#065f46', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {window.location.origin}/report/{savedReportId}
-                    </code>
-                    <button
-                        onClick={() => {
-                            navigator.clipboard.writeText(`${window.location.origin}/report/${savedReportId}`);
-                            setIsCopying(true);
-                            setTimeout(() => setIsCopying(false), 2000);
-                        }}
-                        className="cr-btn"
-                        style={{ height: '3rem', padding: '0 1.5rem', background: isCopying ? '#10b981' : '#065f46', color: 'white', borderRadius: '1rem', border: 'none', transition: 'all 0.3s' }}
-                    >
-                        {isCopying ? <Check size={18} /> : <Copy size={18} />}
-                        {isCopying ? 'COPIED' : 'COPY LINK'}
-                    </button>
+                <div className="cr-flex cr-flex-col cr-gap-3" style={{ background: 'white', padding: '1.25rem', borderRadius: '1.25rem', border: '1px solid #d1fae5', position: 'relative' }}>
+                    <div className="cr-flex cr-items-center cr-gap-3" style={{ borderBottom: '1px dashed #e2e8f0', paddingBottom: '1rem' }}>
+                        <code style={{ flex: 1, textAlign: 'left', fontSize: '1rem', color: '#065f46', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {window.location.origin}/shared/{savedReportId}
+                        </code>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(`${window.location.origin}/shared/${savedReportId}`);
+                                setIsCopying(true);
+                                setTimeout(() => setIsCopying(false), 2000);
+                            }}
+                            className="cr-btn"
+                            style={{ height: '2.5rem', padding: '0 1rem', background: isCopying ? '#10b981' : '#065f46', color: 'white', borderRadius: '0.75rem', border: 'none', transition: 'all 0.3s', fontSize: '0.75rem' }}
+                        >
+                            {isCopying ? <Check size={14} /> : <Copy size={14} />}
+                            {isCopying ? 'COPIED' : 'COPY'}
+                        </button>
+                    </div>
+
+                    {config.preferences.sharePassword && (
+                        <div className="cr-flex cr-items-center cr-justify-between" style={{ paddingTop: '0.25rem' }}>
+                            <div>
+                                <span style={{ fontSize: '0.625rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.25rem' }}>Access Password</span>
+                                <code style={{ fontSize: '1.25rem', color: '#0f172a', fontWeight: '900', letterSpacing: '0.05em', background: '#f1f5f9', padding: '0.25rem 0.5rem', borderRadius: '0.5rem' }}>{config.preferences.sharePassword}</code>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '500' }}>Share this securely with recipients.</span>
+                        </div>
+                    )}
                 </div>
 
                 <p style={{ marginTop: '1.5rem', fontSize: '0.8125rem', color: '#059669', fontWeight: '600' }}>
-                    {config.preferences.shareWith === 'Selected Users'
-                        ? 'Invitation emails have been sent to authorized recipients.'
-                        : config.preferences.shareWith === 'Everyone'
-                            ? 'This link can be accessed by anyone in your organization.'
-                            : 'This link is private and accessible only via your credentials.'}
+                    {config.preferences.shareWith === 'Protected Link'
+                        ? 'This link requires the generated password to access.'
+                        : config.preferences.shareWith === 'Organization'
+                            ? 'This link can be accessed with the password by your organization.'
+                            : 'This link is restricted but requires the password to authorize viewing.'}
                 </p>
             </div>
 

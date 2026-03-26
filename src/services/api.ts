@@ -313,8 +313,77 @@ export const advancedReportsAPI = {
     getSavedReports: async () => {
         const response = await apiClient.get('/api/advanced-reports/saved');
         return response.data;
+    },
+
+    exportReport: async (config: any) => {
+        const response = await apiClient.post('/api/advanced-reports/export', config, {
+            responseType: 'blob'
+        });
+
+        // Handle physical file download in browser
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+
+        // Try to get filename from headers
+        let filename = 'custom_report.pdf';
+        const disposition = response.headers['content-disposition'];
+        if (disposition && disposition.indexOf('attachment') !== -1) {
+            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+            const matches = filenameRegex.exec(disposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
+            }
+        }
+
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+
+        // Clean up
+        link.parentNode?.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        return true;
     }
 };
+
+export const sharedReportsAPI = {
+    previewReport: async (reportId: string, password?: string) => {
+        const response = await apiClient.post(`/api/shared-reports/${reportId}/preview`, { password });
+        return response.data;
+    },
+    exportReport: async (reportId: string, password?: string) => {
+        const response = await apiClient.post(`/api/shared-reports/${reportId}/export`, { password }, {
+            responseType: 'blob'
+        });
+
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+
+        let filename = 'shared_report.pdf';
+        const disposition = response.headers['content-disposition'];
+        if (disposition && disposition.indexOf('attachment') !== -1) {
+            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+            const matches = filenameRegex.exec(disposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
+            }
+        }
+
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+
+        link.parentNode?.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        return true;
+    }
+}
 
 // Scheduled Reports APIs
 export const scheduledReportsAPI = {
@@ -338,6 +407,24 @@ export const scheduledReportsAPI = {
     },
     runNow: async (id: number) => {
         const response = await apiClient.post(`/api/scheduled-reports/${id}/run-now`);
+        return response.data;
+    }
+};
+
+export const notificationsAPI = {
+    fetch: async (limit: number = 20) => {
+        const response = await apiClient.get('/api/notifications', { params: { limit } });
+        return response.data;
+    },
+    markRead: async (id?: number) => {
+        const response = await apiClient.post('/api/notifications/read', null, { params: { notification_id: id } });
+        return response.data;
+    }
+};
+
+export const chatbotAPI = {
+    ask: async (message: string) => {
+        const response = await apiClient.post('/api/chatbot/ask', { message });
         return response.data;
     }
 };

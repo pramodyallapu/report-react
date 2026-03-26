@@ -68,7 +68,7 @@ export default function ReportPage() {
     if (loading) {
         return (
             <MainLayout onLogout={handleLogout}>
-                <div className="flex flex-col items-center justify-center h-full">
+                <div style={{ height: 'var(--page-panel-height)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                     <div className="loader-logo-wrapper">
                         <div className="loader-ring" />
                         <div className="loader-ring" />
@@ -83,10 +83,10 @@ export default function ReportPage() {
     if (!report) {
         return (
             <MainLayout onLogout={handleLogout}>
-                <div className="flex flex-col items-center justify-center h-full text-center p-12">
-                    <AlertCircle className="w-16 h-16 text-red-400 mb-4" />
-                    <h2 className="text-xl font-bold text-gray-900 mb-2">Report Not Found</h2>
-                    <p className="text-gray-500 mb-6">The report you are looking for does not exist or has been removed.</p>
+                <div style={{ height: 'var(--page-panel-height)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '3rem' }}>
+                    <AlertCircle size={64} style={{ color: 'var(--color-danger)', marginBottom: '1rem', opacity: 0.7 }} />
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--color-text-primary)', marginBottom: '0.5rem' }}>Report Not Found</h2>
+                    <p style={{ color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>The report you are looking for does not exist or has been removed.</p>
                     <button className="btn btn-primary" onClick={handleBack}>Go Back Home</button>
                 </div>
             </MainLayout>
@@ -95,7 +95,12 @@ export default function ReportPage() {
 
     return (
         <MainLayout onLogout={handleLogout}>
-            <div className="h-[calc(100vh-100px)]">
+            {/* calc(100vh - header - content top/bottom padding) = exact visible area */}
+            <div style={{
+                height: 'var(--page-panel-height)',
+                display: 'flex',
+                flexDirection: 'column',
+            }}>
                 <ReportViewer
                     report={report}
                     onClose={handleBack}

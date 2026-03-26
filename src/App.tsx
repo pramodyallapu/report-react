@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import CustomReportPage from './pages/CustomReportPage';
 import ReportPage from './pages/ReportPage';
 import ScheduledReports from './pages/ScheduledReports';
+import SharedReportPage from './pages/SharedReportPage';
 import { RefreshCw } from 'lucide-react';
 import * as api from './services/api';
 import './App.css';
@@ -37,6 +38,9 @@ function App() {
   };
 
   if (isAuthenticated === null) {
+    const isLoaderEnabled = localStorage.getItem('loaderEnabled') !== 'false';
+    if (!isLoaderEnabled) return null;
+
     return (
       <div className="premium-loader-container">
         <div className="loader-logo-wrapper">
@@ -53,7 +57,12 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />;
+    return (
+      <Routes>
+        <Route path="/shared/:reportId" element={<SharedReportPage />} />
+        <Route path="*" element={<LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />} />
+      </Routes>
+    );
   }
 
   // Authenticated Application
@@ -62,6 +71,7 @@ function App() {
       <Route path="/" element={<Dashboard onLogout={handleLogout} />} />
       <Route path="/custom-report" element={<CustomReportPage />} />
       <Route path="/report/:reportId" element={<ReportPage />} />
+      <Route path="/shared/:reportId" element={<SharedReportPage />} />
       <Route path="/scheduled" element={<ScheduledReports />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

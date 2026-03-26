@@ -34,7 +34,7 @@ export default function CustomReportPage() {
     // We pass isPage=true to tell the component it's being rendered as a full page
     return (
         <MainLayout onLogout={handleLogout}>
-            <div className="h-[calc(100vh-100px)]">
+            <div style={{ height: 'var(--page-panel-height)', display: 'flex', flexDirection: 'column' }}>
                 <CustomReportWizard onClose={handleClose} onSave={handleSave} />
             </div>
         </MainLayout>

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { X, Calendar, Download, RefreshCw, Filter } from 'lucide-react';
+import { X, Calendar, Download, RefreshCw, Filter, ArrowLeft, BarChart2, Table as TableIcon } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { type Report } from '../data/reports';
 import * as api from '../services/api';
 import BillingLedgerAging from './reports/BillingLedgerAging';
+import Papa from 'papaparse';
 import './ReportViewer.css';
 
 interface ReportViewerProps {
@@ -19,6 +21,31 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
         start_date: '',
         end_date: '',
     });
+    const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+    const [hiddenMetrics, setHiddenMetrics] = useState<string[]>([]);
+
+    const handleLegendClick = (e: any) => {
+        const { dataKey } = e;
+        if (!dataKey) return;
+        setHiddenMetrics(prev =>
+            prev.includes(dataKey) ? prev.filter(key => key !== dataKey) : [...prev, dataKey]
+        );
+    };
+
+    const [layoutPreference, setLayoutPreference] = useState<'compact' | 'relaxed'>(() => {
+        // First priority: report config if it's a custom report
+        if (report.config?.layout?.tableDensity) {
+            const density = report.config.layout.tableDensity.toLowerCase();
+            return density === 'compact' ? 'compact' : 'relaxed';
+        }
+        // Second priority: localStorage
+        const saved = localStorage.getItem('rv-layout-preference');
+        return (saved as 'compact' | 'relaxed') || 'relaxed';
+    });
+
+    useEffect(() => {
+        localStorage.setItem('rv-layout-preference', layoutPreference);
+    }, [layoutPreference]);
 
     const isBillingLedgerAging = report.id === 'billing-ledger-aging';
 
@@ -190,10 +217,51 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
         loadReportData();
     };
 
+    const handleExport = async () => {
+        if (report.isCustom && report.config) {
+            setLoading(true);
+            try {
+                await api.advancedReportsAPI.exportReport(report.config);
+            } catch (err: any) {
+                console.error('Export failed:', err);
+                setError('Export failed: ' + (err.response?.data?.detail || err.message));
+            } finally {
+                setLoading(false);
+            }
+        } else {
+            if (!data) return;
+            const displayData = Array.isArray(data) ? data : (data.data && Array.isArray(data.data) ? data.data : null);
+
+            if (!displayData || displayData.length === 0) {
+                alert('No data available to export');
+                return;
+            }
+
+            try {
+                const csv = Papa.unparse(displayData);
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+
+                const dateStr = new Date().toISOString().split('T')[0];
+                const safeName = report.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                link.setAttribute("download", `${safeName}_${dateStr}.csv`);
+
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (err: any) {
+                console.error('CSV Export failed:', err);
+                setError('Failed to generate CSV export');
+            }
+        }
+    };
+
     const renderTableData = () => {
         if (!data) return null;
 
-        // Try to get the actual array if it's wrapped in an object
         const displayData = Array.isArray(data) ? data : (data.data && Array.isArray(data.data) ? data.data : null);
 
         if (displayData) {
@@ -205,41 +273,166 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                 );
             }
 
-            // Render as table
             const keys = Object.keys(displayData[0]).filter(k => k !== 'prov_ins_file');
-            return (
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-100">
-                        <thead className="bg-gray-50/50">
-                            <tr>
-                                {keys.map((key) => (
-                                    <th
-                                        key={key}
-                                        className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100"
-                                    >
-                                        {key.replace(/_/g, ' ')}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-50">
-                            {displayData.map((row: any, idx: number) => (
-                                <tr
-                                    key={idx}
-                                    className="hover:bg-gray-50/50 transition-colors group"
-                                >
-                                    {keys.map((key) => (
-                                        <td
-                                            key={key}
-                                            className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium group-hover:text-gray-900"
-                                        >
-                                            {row[key] !== null && row[key] !== undefined ? String(row[key]) : '-'}
-                                        </td>
+
+            let chartContent = null;
+            if (viewMode === 'chart') {
+                const chartData = displayData.map((row: any) => {
+                    const newRow = { ...row };
+                    Object.keys(newRow).forEach(key => {
+                        if (typeof newRow[key] === 'string') {
+                            // Strip typical formatting chars to expose underlying number
+                            const parsed = parseFloat(newRow[key].replace(/,/g, '').replace(/^\$/, ''));
+                            if (!isNaN(parsed) && newRow[key].match(/[0-9]/) && !newRow[key].includes('-202') && !newRow[key].includes('/202')) {
+                                newRow[key] = parsed;
+                            }
+                        }
+                    });
+                    return newRow;
+                });
+
+                const xAxisKey = keys.find(k => k.toLowerCase().match(/name|month|insurance|payer|date|patient/)) || keys[0];
+                const numericKeys = keys.filter(k => k !== xAxisKey && typeof chartData[0][k] === 'number').slice(0, 3);
+                const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'];
+
+                if (numericKeys.length === 0) {
+                    chartContent = (
+                        <div className="empty-state">
+                            <p style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>No numeric data found to generate chart.</p>
+                        </div>
+                    );
+                } else if (report.id === 'kpi-by-patient' || report.id === 'kpi-by-insurance') {
+                    // KPI Proportional Comparison - Horizontal Layout
+                    chartContent = (
+                        <div style={{ flex: 1, minHeight: 0, padding: '2rem', background: 'var(--color-bg-primary)', borderRadius: '0 0 1.5rem 1.5rem', width: '100%' }}>
+                            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+                                <BarChart data={chartData} layout="vertical" margin={{ top: 20, right: 30, left: 100, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                                    <XAxis type="number" stroke="#64748b" />
+                                    <YAxis dataKey={xAxisKey} type="category" stroke="#64748b" tick={{ fontSize: 12 }} width={120} />
+                                    <RechartsTooltip contentStyle={{ borderRadius: '0.75rem', border: '1px solid var(--color-border)', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', backgroundColor: 'var(--color-bg-primary)' }} cursor={{ fill: 'var(--color-bg-secondary)' }} />
+                                    <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer' }} />
+                                    {numericKeys.map((key, index) => (
+                                        <Bar key={key} dataKey={key} fill={COLORS[index % COLORS.length]} radius={[0, 4, 4, 0]} barSize={24} hide={hiddenMetrics.includes(key)} />
                                     ))}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    );
+                } else {
+                    // Standard Vertical Trend Chart (e.g. KPI by Month)
+                    chartContent = (
+                        <div style={{ flex: 1, minHeight: 0, padding: '2rem', background: 'var(--color-bg-primary)', borderRadius: '0 0 1.5rem 1.5rem', width: '100%' }}>
+                            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+                                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                    <XAxis dataKey={xAxisKey} stroke="#64748b" tick={{ fontSize: 12 }} angle={chartData.length > 8 ? -45 : 0} textAnchor={chartData.length > 8 ? 'end' : 'middle'} />
+                                    <YAxis stroke="#64748b" tick={{ fontSize: 12 }} />
+                                    <RechartsTooltip contentStyle={{ borderRadius: '0.75rem', border: '1px solid var(--color-border)', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', backgroundColor: 'var(--color-bg-primary)' }} cursor={{ fill: 'var(--color-bg-secondary)' }} />
+                                    <Legend onClick={handleLegendClick} wrapperStyle={{ paddingTop: '20px', cursor: 'pointer' }} />
+                                    {numericKeys.map((key, index) => (
+                                        <Bar key={key} dataKey={key} fill={COLORS[index % COLORS.length]} radius={[4, 4, 0, 0]} hide={hiddenMetrics.includes(key)} />
+                                    ))}
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    );
+                }
+            }
+
+            return (
+                <div className={layoutPreference === 'compact' ? 'rv-compact' : 'rv-relaxed'}
+                    style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                    <div className="rv-summary-bar">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                            <div className="rv-layout-controls" style={{ margin: 0 }}>
+                                <button
+                                    className={`rv-layout-btn ${viewMode === 'table' ? 'active' : ''}`}
+                                    onClick={() => setViewMode('table')}
+                                    style={{ display: 'flex', alignItems: 'center' }}
+                                    title="Table View"
+                                >
+                                    <TableIcon size={14} style={{ marginRight: '0.25rem' }} />
+                                    Table
+                                </button>
+                                <button
+                                    className={`rv-layout-btn ${viewMode === 'chart' ? 'active' : ''}`}
+                                    onClick={() => setViewMode('chart')}
+                                    style={{ display: 'flex', alignItems: 'center' }}
+                                    title="Chart View"
+                                >
+                                    <BarChart2 size={14} style={{ marginRight: '0.25rem' }} />
+                                    Chart
+                                </button>
+                            </div>
+                            {viewMode === 'table' && (
+                                <div className="rv-layout-controls" style={{ margin: 0 }}>
+                                    <button
+                                        className={`rv-layout-btn ${layoutPreference === 'relaxed' ? 'active' : ''}`}
+                                        onClick={() => setLayoutPreference('relaxed')}
+                                    >
+                                        Relaxed
+                                    </button>
+                                    <button
+                                        className={`rv-layout-btn ${layoutPreference === 'compact' ? 'active' : ''}`}
+                                        onClick={() => setLayoutPreference('compact')}
+                                    >
+                                        Compact
+                                    </button>
+                                </div>
+                            )}
+                            <div className="rv-summary-item">
+                                <span className="rv-summary-label">Total Records Found</span>
+                                <span className="rv-summary-value">{displayData.length}</span>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div className="rv-status-badge">
+                                <span className="rv-badge-dot"></span>
+                                Generated Successfully
+                            </div>
+                            {isPage && (
+                                <>
+                                    <button className="btn btn-secondary" onClick={handleExport} disabled={loading} title="Export"
+                                        style={{ padding: '0.5rem', borderRadius: '0.5rem', height: 'auto', display: 'flex', minWidth: '0' }}>
+                                        <Download size={16} />
+                                    </button>
+                                    <button className="btn btn-ghost" onClick={onClose} title="Back"
+                                        style={{ padding: '0.5rem', borderRadius: '0.5rem', height: 'auto', display: 'flex', minWidth: '0', background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}>
+                                        <ArrowLeft size={16} />
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    <div className="rv-table-container" style={{ borderRadius: '0 0 1.5rem 1.5rem' }}>
+                        {viewMode === 'chart' ? chartContent : (
+                            <div className="rv-table-wrapper premium-scrollbar">
+                                <table className="rv-table">
+                                    <thead>
+                                        <tr>
+                                            {keys.map((key) => (
+                                                <th key={key}>
+                                                    {key.replace(/_/g, ' ')}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {displayData.map((row: any, idx: number) => (
+                                            <tr key={idx}>
+                                                {keys.map((key) => (
+                                                    <td key={key}>
+                                                        {row[key] !== null && row[key] !== undefined ? String(row[key]) : '-'}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </div>
             );
         }
@@ -256,118 +449,150 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
 
     if (isPage) {
         return (
-            <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-start bg-white">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900">{report.name}</h2>
-                        <p className="text-sm text-gray-500 mt-1">
-                            {report.description}
-                        </p>
+            <div style={{
+                display: 'flex', flexDirection: 'column',
+                height: '100%',       /* fills the calc() wrapper in ReportPage */
+                minHeight: 0,
+                background: 'var(--color-bg-primary)',
+                borderRadius: '1.25rem',
+                border: '1px solid var(--color-border)',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                overflow: 'hidden',
+            }}>
+                {/* ── Report Header ── */}
+                <div style={{
+                    padding: '1rem 1.75rem',
+                    borderBottom: '1px solid var(--color-border)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: 'var(--color-bg-primary)', flexShrink: 0, gap: '1rem',
+                }}>
+                    <div style={{ minWidth: 0 }}>
+                        {report.category && (
+                            <span style={{
+                                fontSize: '0.7rem', fontWeight: '700', color: 'var(--color-text-tertiary)',
+                                textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '0.2rem',
+                            }}>
+                                {report.category}
+                            </span>
+                        )}
+                        <h2 style={{
+                            fontSize: '1.125rem', fontWeight: '800', color: 'var(--color-text-primary)',
+                            margin: 0, letterSpacing: '-0.01em',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                            {report.name}
+                        </h2>
+                        {report.description && (
+                            <p style={{
+                                fontSize: '0.8rem', color: 'var(--color-text-tertiary)',
+                                margin: '0.2rem 0 0', lineHeight: 1.4,
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                                {report.description}
+                            </p>
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexShrink: 0 }}>
+                        {report.requiresDateFilter && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-bg-secondary)', padding: '0.25rem 0.25rem 0.25rem 0.75rem', borderRadius: '0.75rem', border: '1px solid var(--color-border)' }}>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <input type="date" className="modern-date-input"
+                                        style={{ height: '32px', padding: '0 0.25rem', fontSize: '0.8rem', border: 'none', background: 'transparent', width: 'auto', cursor: 'pointer', color: 'var(--color-text-primary)' }}
+                                        value={filters.start_date}
+                                        onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+                                        title="Start Date" />
+                                    <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 600, fontSize: '0.75rem' }}>to</span>
+                                    <input type="date" className="modern-date-input"
+                                        style={{ height: '32px', padding: '0 0.25rem', fontSize: '0.8rem', border: 'none', background: 'transparent', width: 'auto', cursor: 'pointer', color: 'var(--color-text-primary)' }}
+                                        value={filters.end_date}
+                                        onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+                                        title="End Date" />
+                                </div>
+                                <button className="btn-run-report" onClick={handleRunReport} disabled={loading}
+                                    style={{ margin: 0, height: '32px', padding: '0 1rem', borderRadius: '0.5rem', fontSize: '0.8rem', gap: '0.375rem', boxShadow: 'none' }}>
+                                    <Filter size={14} />
+                                    Run
+                                </button>
+                            </div>
+                        )}
+                        {!report.requiresDateFilter && (
+                            <button className="btn btn-primary" onClick={handleRunReport} disabled={loading}
+                                style={{ height: '36px', padding: '0 1rem', borderRadius: '0.5rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <RefreshCw size={14} />
+                                Refresh Report
+                            </button>
+                        )}
+                        {!data && (
+                            <button className="btn btn-ghost" onClick={onClose} title="Back"
+                                style={{ padding: '0.5rem', borderRadius: '0.5rem', display: 'flex', border: '1px solid var(--color-border)' }}>
+                                <ArrowLeft size={16} />
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-hidden flex flex-col p-6">
+                {/* ── Body ── */}
+                <div style={{
+                    flex: 1, display: 'flex', flexDirection: 'column',
+                    overflow: 'hidden', padding: '1.25rem 1.5rem',
+                    minHeight: 0, gap: '1rem',
+                }}>
                     {isBillingLedgerAging ? (
-                        <div className="flex-1 overflow-hidden -m-6">
+                        <div style={{ flex: 1, overflow: 'hidden', margin: '-1.25rem -1.5rem' }}>
                             <BillingLedgerAging />
                         </div>
                     ) : (
                         <>
-                            {/* Filters Section */}
-                            {report.requiresDateFilter && (
-                                <div className="report-viewer-card mb-8">
-                                    <div className="report-description">
-                                        {report.description || `Compare expected vs actual ${report.name.toLowerCase()}`}
-                                    </div>
-                                    <div className="report-filters-container">
-                                        <div className="flex gap-4 items-start">
-                                            <div className="filter-input-group">
-                                                <label className="filter-label">START DATE</label>
-                                                <div className="date-input-wrapper">
-                                                    <input
-                                                        type="date"
-                                                        className="modern-date-input"
-                                                        value={filters.start_date}
-                                                        onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="filter-input-group">
-                                                <label className="filter-label">END DATE</label>
-                                                <div className="date-input-wrapper">
-                                                    <input
-                                                        type="date"
-                                                        className="modern-date-input"
-                                                        value={filters.end_date}
-                                                        onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <button className="btn-run-report" onClick={handleRunReport} disabled={loading}>
-                                            <Filter size={24} />
-                                            Run Report
-                                        </button>
-                                    </div>
-                                    {(!filters.start_date || !filters.end_date) && (
-                                        <div className="filter-help-text">
-                                            Please select both start and end dates
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            {/* Date Filters block removed as they are now in the header */}
 
-                            {/* Error Message */}
+                            {/* Error */}
                             {error && (
-                                <div className="p-4 bg-red-50 border border-red-100 rounded-lg text-red-600 mb-6">
+                                <div style={{
+                                    flexShrink: 0, padding: '0.75rem 1rem',
+                                    backgroundColor: '#fef2f2', border: '1px solid #fee2e2',
+                                    borderRadius: '0.625rem', color: '#dc2626',
+                                    fontSize: '0.875rem', fontWeight: '600',
+                                }}>
                                     {error}
                                 </div>
                             )}
 
-                            {/* Loading State */}
+                            {/* Loading */}
                             {loading && (
-                                <div className="text-center p-12">
-                                    <RefreshCw size={32} className="shimmer mx-auto text-primary" />
-                                    <p className="mt-4 text-gray-500">Loading report data...</p>
+                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <div className="rv-loader-container">
+                                        <div className="rv-spinner-ring"></div>
+                                        <div className="rv-loader-text">Analyzing Data...</div>
+                                        <div className="rv-loader-subtext">Compiling your comprehensive report</div>
+                                    </div>
                                 </div>
                             )}
 
-                            {/* Data Display */}
-                            <div className="flex-1 overflow-auto rounded-lg border border-gray-100">
-                                {!loading && data && renderTableData()}
+                            {/* Data Table — fills all remaining height */}
+                            {!loading && (
+                                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                    {data && renderTableData()}
 
-                                {/* Empty State */}
-                                {!loading && !data && !error && (
-                                    <div className="empty-state">
-                                        <Calendar className="empty-state-icon" />
-                                        <h3 className="empty-state-title">Ready to run report</h3>
-                                        <p className="empty-state-description">
-                                            {report.requiresDateFilter
-                                                ? 'Select date range and click "Run Report" to view data'
-                                                : 'Click "Run Report" to view data'}
-                                        </p>
-                                        {!report.requiresDateFilter && (
-                                            <button className="btn btn-primary" onClick={handleRunReport}>
-                                                <RefreshCw size={18} />
-                                                Run Report
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                                    {!data && !error && (
+                                        <div className="empty-state" style={{ marginTop: '2rem' }}>
+                                            <Calendar style={{ width: '3rem', height: '3rem', color: 'var(--color-text-tertiary)', margin: '0 auto 1.25rem' }} />
+                                            <h3 className="empty-state-title">Ready to run report</h3>
+                                            <p className="empty-state-description">
+                                                {report.requiresDateFilter
+                                                    ? 'Select date range and click "Run Report" to view data'
+                                                    : 'Loading report data...'}
+                                            </p>
+                                            {!report.requiresDateFilter && (
+                                                <button className="btn btn-primary" onClick={handleRunReport}>
+                                                    <RefreshCw size={16} />
+                                                    Run Report
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </>
-                    )}
-                </div>
-
-                <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
-                    <button className="btn btn-secondary" onClick={onClose}>
-                        Back to Reports
-                    </button>
-                    {data && (
-                        <button className="btn btn-primary">
-                            <Download size={18} />
-                            Export
-                        </button>
                     )}
                 </div>
             </div>
@@ -379,7 +604,7 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
             <div
                 className="modal"
                 onClick={(e) => e.stopPropagation()}
-                style={{ maxWidth: '90vw', width: '1200px' }}
+                style={{ maxWidth: '95vw', width: 'min(1280px, 95vw)', borderRadius: '2rem' }}
             >
                 <div className="modal-header">
                     <div>
@@ -396,21 +621,22 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                 <div className="modal-body" style={{
                     display: 'flex',
                     flexDirection: 'column',
-                    height: '75vh',
-                    padding: isBillingLedgerAging ? 0 : '0'
+                    height: '80vh',
+                    padding: 0,
+                    overflow: 'hidden'
                 }}>
                     {isBillingLedgerAging ? (
                         <BillingLedgerAging />
                     ) : (
-                        <div style={{ padding: '2.5rem' }}>
+                        <div style={{ padding: 'min(2.5rem, 4vh)', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
                             {/* Filters Section */}
                             {report.requiresDateFilter && (
-                                <div className="report-viewer-card mb-8">
+                                <div className="report-viewer-card mb-6" style={{ padding: 'min(2.5rem, 4vh)' }}>
                                     <div className="report-description">
                                         {report.description || `Compare expected vs actual ${report.name.toLowerCase()}`}
                                     </div>
                                     <div className="report-filters-container">
-                                        <div className="flex gap-4 items-start">
+                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
                                             <div className="filter-input-group">
                                                 <label className="filter-label">START DATE</label>
                                                 <div className="date-input-wrapper">
@@ -434,8 +660,9 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                                                 </div>
                                             </div>
                                         </div>
-                                        <button className="btn-run-report" onClick={handleRunReport} disabled={loading}>
-                                            <Filter size={24} />
+                                        <button className="btn-run-report" onClick={handleRunReport} disabled={loading}
+                                            style={{ margin: 0, height: '44px', alignSelf: 'flex-end', padding: '0 1.5rem', borderRadius: '0.75rem' }}>
+                                            <Filter size={18} />
                                             Run Report
                                         </button>
                                     </div>
@@ -465,16 +692,17 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
 
                             {/* Loading State */}
                             {loading && (
-                                <div style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-                                    <RefreshCw size={32} className="shimmer" style={{ margin: '0 auto' }} />
-                                    <p style={{ marginTop: 'var(--spacing-md)', color: 'var(--color-text-secondary)' }}>
-                                        Loading report data...
-                                    </p>
+                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', minHeight: '400px' }}>
+                                    <div className="rv-loader-container">
+                                        <div className="rv-spinner-ring"></div>
+                                        <div className="rv-loader-text">Analyzing Data...</div>
+                                        <div className="rv-loader-subtext">Compiling your comprehensive report</div>
+                                    </div>
                                 </div>
                             )}
 
                             {/* Data Display */}
-                            <div style={{ flex: 1, overflow: 'auto' }}>
+                            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                                 {!loading && data && renderTableData()}
 
                                 {/* Empty State */}
@@ -505,7 +733,7 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                         Close
                     </button>
                     {data && (
-                        <button className="btn btn-primary">
+                        <button className="btn btn-primary" onClick={handleExport} disabled={loading}>
                             <Download size={18} />
                             Export
                         </button>

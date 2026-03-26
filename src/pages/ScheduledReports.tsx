@@ -265,7 +265,7 @@ export default function ScheduledReports() {
                                         </div>
                                     </td>
                                     <td>
-                                        <div className="flex items-center gap-2 font-bold text-slate-600">
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '700', color: 'var(--color-text-secondary)' }}>
                                             <Clock size={16} /> {report.schedule_time}
                                         </div>
                                     </td>
@@ -275,7 +275,7 @@ export default function ScheduledReports() {
                                         </div>
                                     </td>
                                     <td>
-                                        <div className="flex justify-end gap-2">
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                                             <button
                                                 onClick={() => handleRunNow(report.id)}
                                                 disabled={runningId === report.id}

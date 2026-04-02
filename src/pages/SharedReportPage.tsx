@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Lock, FileText, Download, ShieldCheck, ChevronRight, Check } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { Lock, Download, Check } from 'lucide-react';
 import { sharedReportsAPI } from '../services/api';
 
 export default function SharedReportPage() {
     const { reportId } = useParams();
-    const navigate = useNavigate();
 
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const [downloading, setDownloading] = useState(false);
     const [downloadSuccess, setDownloadSuccess] = useState(false);
 
     // Check if report requires password or is accessible right away

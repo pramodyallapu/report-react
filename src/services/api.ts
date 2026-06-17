@@ -1,7 +1,9 @@
 import axios from 'axios';
 
-// Base API URL - Update this to match your FastAPI server
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// In dev the Vite proxy forwards /api, /login, /logout to VITE_API_BASE_URL,
+// so we use a relative baseURL to avoid CORS entirely.
+// In production builds requests go directly to the configured backend origin.
+const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || '');
 
 // Create axios instance with default config
 const apiClient = axios.create({

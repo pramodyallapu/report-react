@@ -334,43 +334,47 @@ export default function MainLayout({
                             <div className="nav-section-title">Report Category</div>
                             {reportCategories.map((category) => {
                                 const IconComponent = getIcon(category.icon);
+                                const isActive = selectedCategory === category.id;
                                 return (
                                     <div
                                         key={category.id}
-                                        className={`category-item-container`}
-                                        style={{ display: 'flex', alignItems: 'center', padding: '0.25rem 0' }}
-                                    >
-                                        <div
-                                            className={`category-item ${selectedCategory === category.id ? 'active' : ''}`}
-                                            onClick={() => {
-                                                if (location.pathname !== '/') {
-                                                    navigate(`/?category=${category.id}`);
-                                                } else {
-                                                    if (onCategorySelect) {
-                                                        onCategorySelect(selectedCategory === category.id ? null : category.id);
-                                                    }
+                                        className={`category-item ${isActive ? 'active' : ''}`}
+                                        onClick={() => {
+                                            if (location.pathname !== '/') {
+                                                navigate(`/?category=${category.id}`);
+                                            } else {
+                                                if (onCategorySelect) {
+                                                    onCategorySelect(isActive ? null : category.id);
                                                 }
-                                            }}
-                                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-                                        >
-                                            <div className="category-item-left" style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 'var(--spacing-sm)'
-                                            }}>
-                                                <IconComponent size={16} />
-                                                <span className="nav-text">{category.name}</span>
-                                            </div>
-                                            <div className="category-item-right" style={{ display: 'flex' }}>
-                                                <ChevronRight
-                                                    size={14}
-                                                    style={{
-                                                        opacity: selectedCategory === category.id ? 1 : 0.5,
-                                                        transform: selectedCategory === category.id ? 'rotate(90deg)' : 'none',
-                                                        transition: 'transform 0.2s'
-                                                    }}
-                                                />
-                                            </div>
+                                            }
+                                        }}
+                                    >
+                                        <div className="category-item-left">
+                                            <IconComponent size={15} />
+                                            <span className="nav-text">{category.name}</span>
+                                        </div>
+                                        <div className="category-item-right" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                            <span style={{
+                                                fontSize: '0.625rem',
+                                                fontWeight: '800',
+                                                padding: '0.15rem 0.45rem',
+                                                borderRadius: '0.375rem',
+                                                background: isActive ? 'rgba(165,180,252,0.25)' : 'rgba(255,255,255,0.08)',
+                                                color: isActive ? '#c4b5fd' : 'var(--color-sidebar-muted)',
+                                                transition: 'all 0.2s',
+                                                lineHeight: 1.4,
+                                            }} className="nav-text">
+                                                {category.reports.length}
+                                            </span>
+                                            <ChevronRight
+                                                size={12}
+                                                style={{
+                                                    opacity: isActive ? 1 : 0.4,
+                                                    transform: isActive ? 'rotate(90deg)' : 'none',
+                                                    transition: 'transform 0.2s',
+                                                    color: isActive ? '#c4b5fd' : 'inherit',
+                                                }}
+                                            />
                                         </div>
                                     </div>
                                 );
@@ -618,16 +622,28 @@ export default function MainLayout({
                                 className="btn btn-primary"
                                 onClick={() => navigate('/custom-report')}
                                 style={{
-                                    borderRadius: '2rem',
-                                    padding: '0.75rem 1.5rem',
+                                    borderRadius: '0.875rem',
+                                    padding: '0.625rem 1.25rem',
                                     fontWeight: '700',
-                                    background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))',
-                                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                    fontSize: '0.8125rem',
+                                    background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)',
+                                    boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    border: 'none',
+                                    transition: 'all 0.2s ease',
+                                    letterSpacing: '0.01em',
+                                }}
+                                onMouseEnter={e => {
+                                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 20px rgba(79,70,229,0.45)';
+                                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={e => {
+                                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 14px rgba(79,70,229,0.35)';
+                                    (e.currentTarget as HTMLButtonElement).style.transform = '';
                                 }}
                             >
-                                <Plus size={20} />
-                                Create Pipeline
+                                <Plus size={17} strokeWidth={2.5} />
+                                New Report
                             </button>
                         </div>
                     </div>

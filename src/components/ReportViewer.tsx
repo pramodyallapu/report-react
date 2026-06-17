@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
-import { X, Calendar, Download, RefreshCw, Filter, ArrowLeft, BarChart2, Table as TableIcon } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Calendar, Download, RefreshCw, Filter, ArrowLeft, BarChart2, Table as TableIcon, FileText, FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { type Report } from '../data/reports';
 import * as api from '../services/api';
 import BillingLedgerAging from './reports/BillingLedgerAging';
 import Papa from 'papaparse';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import './ReportViewer.css';
 
 interface ReportViewerProps {
@@ -17,10 +19,25 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<any>(null);
+    const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+    const downloadMenuRef = useRef<HTMLDivElement>(null);
     const [filters, setFilters] = useState({
         start_date: '',
         end_date: '',
+        year: new Date().getFullYear().toString(),
+        payroll_time: '',
+        till_date: '',
+        staff_provider_text: '',
     });
+
+    const filterType = report.filterType;
+    const needsFilter = report.requiresDateFilter || !!filterType;
+
+    const getStaffProviderIds = (): number[] =>
+        filters.staff_provider_text
+            .split(',')
+            .map(s => parseInt(s.trim(), 10))
+            .filter(n => !isNaN(n) && n > 0);
     const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
     const [hiddenMetrics, setHiddenMetrics] = useState<string[]>([]);
 
@@ -47,11 +64,21 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
         localStorage.setItem('rv-layout-preference', layoutPreference);
     }, [layoutPreference]);
 
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+                setShowDownloadMenu(false);
+            }
+        };
+        if (showDownloadMenu) document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showDownloadMenu]);
+
     const isBillingLedgerAging = report.id === 'billing-ledger-aging';
 
-    // Auto-load reports that don't require date filters
+    // Auto-load reports that need no filter input at all
     useEffect(() => {
-        if (!report.requiresDateFilter && !isBillingLedgerAging) {
+        if (!report.requiresDateFilter && !report.filterType && !isBillingLedgerAging) {
             loadReportData();
         }
     }, [report]);
@@ -86,6 +113,12 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                         case 'missing_credentials':
                             response = await api.staffReportsAPI.getMissingCredentials(filters);
                             break;
+                        case 'missing_credential_files':
+                            response = await api.staffReportsAPI.getMissingCredentialFiles(filters);
+                            break;
+                        case 'missing_other_document_files':
+                            response = await api.staffReportsAPI.getMissingOtherDocumentFiles(filters);
+                            break;
                         case 'expiring_credentials':
                             response = await api.staffReportsAPI.getExpiringCredentials(filters);
                             break;
@@ -94,6 +127,9 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                             break;
                         case 'provider_missing_sign':
                             response = await api.staffReportsAPI.getProviderMissingSign(filters);
+                            break;
+                        case 'bcba_billable_kpi':
+                            response = await api.staffReportsAPI.getBCBABillableKPI(filters);
                             break;
                     }
                 } else if (endpointUrl.includes('/patients/')) {
@@ -107,6 +143,9 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                             break;
                         case 'without_auth':
                             response = await api.patientReportsAPI.getWithoutAuth(filters);
+                            break;
+                        case 'patients_without_schedules':
+                            response = await api.patientReportsAPI.getPatientsWithoutSchedules(filters);
                             break;
                         case 'expiring_doc':
                             response = await api.patientReportsAPI.getExpiringDoc(filters);
@@ -140,11 +179,47 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                             response = await api.appointmentReportsAPI.getSessionUnlockedNotes(filters);
                             break;
                     }
+                } else if (endpointUrl.includes('/sessions/rendered_not_billed')) {
+                    response = await api.appointmentReportsAPI.getRenderedNotBilled(filters);
                 } else if (endpointUrl.includes('billing-ledger-aging')) {
                     response = await api.billingLedgerAPI.getAgingData({
                         type: 1,
                         date_type: 'dos',
                     });
+                } else if (endpointUrl.includes('/appointment_details/')) {
+                    // Nested appointment detail routes
+                    const subType = endpointUrl.split('/appointment_details/').pop();
+                    switch (subType) {
+                        case 'total':
+                            response = await api.appointmentDetailReportsAPI.getTotal(filters);
+                            break;
+                        case 'billable':
+                            response = await api.appointmentDetailReportsAPI.getBillable(filters);
+                            break;
+                        case 'nonbillable':
+                            response = await api.appointmentDetailReportsAPI.getNonBillable(filters);
+                            break;
+                        case 'employee_wise':
+                            response = await api.appointmentDetailReportsAPI.getEmployeeWise(filters);
+                            break;
+                        case 'patient_wise':
+                            response = await api.appointmentDetailReportsAPI.getPatientWise(filters);
+                            break;
+                        case 'overtime':
+                            response = await api.appointmentDetailReportsAPI.getOvertime(filters);
+                            break;
+                    }
+                } else if (endpointUrl.includes('/profit_loss/')) {
+                    // Nested profit/loss routes
+                    const subType = endpointUrl.split('/profit_loss/').pop();
+                    switch (subType) {
+                        case 'by_service':
+                            response = await api.financialReportsAPI.getProfitLossByService(filters);
+                            break;
+                        case 'by_provider':
+                            response = await api.financialReportsAPI.getProfitLossByProvider(filters);
+                            break;
+                    }
                 } else if (endpointUrl.includes('/reports/')) {
                     const endpoint = endpointUrl.split('/').pop();
                     switch (endpoint) {
@@ -153,6 +228,12 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                             break;
                         case 'payment_deposits':
                             response = await api.financialReportsAPI.getPaymentDeposits(filters);
+                            break;
+                        case 'last_week_deposits':
+                            response = await api.financialReportsAPI.getLastWeekDeposits(filters);
+                            break;
+                        case 'last_month_statements':
+                            response = await api.financialReportsAPI.getLastMonthStatements(filters);
                             break;
                         case 'kpi_by_month':
                             response = await api.financialReportsAPI.getKPIByMonth(filters);
@@ -163,6 +244,27 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                         case 'kpi_by_insurance':
                             response = await api.financialReportsAPI.getKPIByInsurance(filters);
                             break;
+                        case 'appointment_count_by_month':
+                            response = await api.financialReportsAPI.getAppointmentCountByMonth(filters);
+                            break;
+                        case 'client_service_summary':
+                            response = await api.financialReportsAPI.getClientServiceSummary(filters);
+                            break;
+                        case 'xero_report':
+                            response = await api.financialReportsAPI.getXeroReport(filters);
+                            break;
+                        case 'leave_tracking':
+                            response = await api.financialReportsAPI.getLeaveTracking({ year: parseInt(filters.year, 10) });
+                            break;
+                        case 'supervision_rbt_wise':
+                            response = await api.supervisionReportsAPI.getSupervisionRBTWise(filters);
+                            break;
+                        case 'supervision_patient_wise':
+                            response = await api.supervisionReportsAPI.getSupervisionPatientWise(filters);
+                            break;
+                        case 'supervision_per_staff':
+                            response = await api.supervisionReportsAPI.getSupervisionPerStaff(filters);
+                            break;
                         case 'aba_hour_client':
                             response = await api.abaReportsAPI.getABAHourClient(filters);
                             break;
@@ -171,6 +273,27 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                             break;
                         case 'ar_ledger_with_balance':
                             response = await api.ledgerReportsAPI.getARLedgerWithBalance(filters);
+                            break;
+                        case 'ar_ledger_production_hourly':
+                            response = await api.ledgerReportsAPI.getARLedgerProductionHourly(filters);
+                            break;
+                        case 'billing_production_hourly':
+                            response = await api.ledgerReportsAPI.getBillingProductionHourly(filters);
+                            break;
+                        case 'deposit_production_hourly':
+                            response = await api.ledgerReportsAPI.getDepositProductionHourly(filters);
+                            break;
+                        case 'manage_secondary_claims':
+                            response = await api.ledgerReportsAPI.getManageSecondaryClaims(filters);
+                            break;
+                        case 'sftp_push_pending_batches':
+                            response = await api.ledgerReportsAPI.getSFTPPushPendingBatches(filters);
+                            break;
+                        case 'concurrent_billing':
+                            response = await api.ledgerReportsAPI.getConcurrentBilling(filters);
+                            break;
+                        case 'cpt_icd_billed_vs_invoice':
+                            response = await api.ledgerReportsAPI.getCPTICDBilledVsInvoice(filters);
                             break;
                         case 'appointment_ledger':
                             response = await api.ledgerReportsAPI.getAppointmentLedger(filters);
@@ -193,6 +316,33 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                         case 'ratewise_payroll_summary':
                             response = await api.payrollReportsAPI.getRatewisePayrollSummary(filters);
                             break;
+                        case 'gusto_payroll':
+                            response = await api.payrollReportsAPI.getGustoPayroll({
+                                payroll_time: parseInt(filters.payroll_time, 10),
+                                staff_provider: getStaffProviderIds(),
+                            });
+                            break;
+                        case 'adp_payroll':
+                            response = await api.payrollReportsAPI.getADPPayroll({
+                                till_date: filters.till_date,
+                                staff_provider: getStaffProviderIds(),
+                            });
+                            break;
+                        case 'bamboohr_payroll':
+                            response = await api.payrollReportsAPI.getBambooHRPayroll({
+                                payroll_time: parseInt(filters.payroll_time, 10),
+                                staff_provider: getStaffProviderIds(),
+                            });
+                            break;
+                        case 'fingercheck_payroll':
+                            response = await api.payrollReportsAPI.getFingerchecKPayroll(filters);
+                            break;
+                        case 'paychex_payroll':
+                            response = await api.payrollReportsAPI.getPaychexPayroll(filters);
+                            break;
+                        case 'paycom_report':
+                            response = await api.payrollReportsAPI.getPaycomReport(filters);
+                            break;
                         case 'expected_actual_pr':
                             response = await api.expectedPRReportsAPI.getExpectedActualPR(filters);
                             break;
@@ -214,7 +364,27 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
             setError('Please select both start and end dates');
             return;
         }
+        if (filterType === 'year' && !filters.year) {
+            setError('Please enter a year');
+            return;
+        }
+        if (filterType === 'payroll-period') {
+            if (!filters.payroll_time) { setError('Please enter the Pay Period ID'); return; }
+            if (!filters.staff_provider_text.trim()) { setError('Please enter at least one Provider ID'); return; }
+        }
+        if (filterType === 'adp-payroll') {
+            if (!filters.till_date) { setError('Please enter the Till Date'); return; }
+            if (!filters.staff_provider_text.trim()) { setError('Please enter at least one Provider ID'); return; }
+        }
         loadReportData();
+    };
+
+    const dlMenuItemStyle: React.CSSProperties = {
+        display: 'flex', alignItems: 'center', gap: '0.5rem',
+        width: '100%', padding: '0.5rem 0.875rem', border: 'none', background: 'none',
+        cursor: 'pointer', fontSize: '0.8125rem', color: 'var(--color-text-primary)',
+        textAlign: 'left', whiteSpace: 'nowrap',
+        transition: 'background 0.15s',
     };
 
     const handleExport = async () => {
@@ -230,7 +400,7 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
             }
         } else {
             if (!data) return;
-            const displayData = Array.isArray(data) ? data : (data.data && Array.isArray(data.data) ? data.data : null);
+            const { rows: displayData } = normalizeData(data);
 
             if (!displayData || displayData.length === 0) {
                 alert('No data available to export');
@@ -259,12 +429,134 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
         }
     };
 
+    const handleExportPDF = () => {
+        setShowDownloadMenu(false);
+        if (!data) return;
+        const { rows: displayData, colMeta } = normalizeData(data);
+        if (!displayData || displayData.length === 0) {
+            alert('No data available to export');
+            return;
+        }
+
+        const keys = Object.keys(displayData[0]).filter(k => k !== 'prov_ins_file' && k !== 'is_total');
+
+        const headerLabel = (key: string): string => {
+            if (colMeta) {
+                const found = colMeta.find(c => c.field === key);
+                if (found) return found.title;
+            }
+            return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, c => c.toUpperCase());
+        };
+
+        const doc = new jsPDF({ orientation: keys.length > 7 ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        // Header bar
+        doc.setFillColor(30, 27, 75);
+        doc.rect(0, 0, pageWidth, 50, 'F');
+
+        // Report title
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(15);
+        doc.text(report.name, pageWidth / 2, 22, { align: 'center' });
+
+        // Subtitle: category + date range
+        const subtitleParts: string[] = [];
+        if (report.category) subtitleParts.push(report.category);
+        if (filters.start_date && filters.end_date) subtitleParts.push(`${filters.start_date} to ${filters.end_date}`);
+        else if (filters.year && report.filterType === 'year') subtitleParts.push(`Year: ${filters.year}`);
+        if (subtitleParts.length > 0) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(200, 200, 230);
+            doc.text(subtitleParts.join('  ·  '), pageWidth / 2, 39, { align: 'center' });
+        }
+
+        // Generated date stamp
+        doc.setTextColor(170, 170, 200);
+        doc.setFontSize(7.5);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - 14, 45, { align: 'right' });
+
+        const body = displayData.map(row =>
+            keys.map(k => {
+                const v = row[k];
+                if (v === null || v === undefined) return '';
+                if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+                if (typeof v === 'object') return JSON.stringify(v);
+                return String(v);
+            })
+        );
+
+        autoTable(doc, {
+            head: [keys.map(headerLabel)],
+            body,
+            startY: 58,
+            theme: 'grid',
+            styles: { fontSize: 7.5, cellPadding: 3, overflow: 'linebreak', valign: 'middle' },
+            headStyles: {
+                fillColor: [231, 230, 230],
+                textColor: [30, 27, 75],
+                fontStyle: 'bold',
+                halign: 'center',
+                lineColor: [180, 180, 180],
+                lineWidth: 0.5,
+            },
+            bodyStyles: { textColor: [50, 50, 70] },
+            alternateRowStyles: { fillColor: [248, 248, 252] },
+            didParseCell: (hookData) => {
+                if (hookData.row.raw && (hookData.row.raw as any[]).includes?.('TOTAL') === false
+                    && displayData[hookData.row.index]?.is_total) {
+                    hookData.cell.styles.fontStyle = 'bold';
+                    hookData.cell.styles.fillColor = [240, 240, 245];
+                }
+            },
+            didDrawPage: (hookData) => {
+                const pageCount = (doc as any).internal.getNumberOfPages();
+                const pageNum = hookData.pageNumber;
+                doc.setFontSize(7);
+                doc.setTextColor(150, 150, 170);
+                doc.text(
+                    `Page ${pageNum} of ${pageCount}`,
+                    pageWidth / 2,
+                    doc.internal.pageSize.getHeight() - 8,
+                    { align: 'center' }
+                );
+                doc.text('TherapyPM Report', 14, doc.internal.pageSize.getHeight() - 8);
+            },
+        });
+
+        const dateStr = new Date().toISOString().split('T')[0];
+        const safeName = report.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        doc.save(`${safeName}_${dateStr}.pdf`);
+    };
+
+    const handleExportCSV = () => {
+        setShowDownloadMenu(false);
+        handleExport();
+    };
+
+    // Normalize any API response shape into a flat array + optional column meta
+    const normalizeData = (raw: any): { rows: any[]; colMeta: { field: string; title: string }[] | null } => {
+        if (!raw) return { rows: [], colMeta: null };
+        // Plain array
+        if (Array.isArray(raw)) return { rows: raw, colMeta: null };
+        // { data: [...], columns?: [...] }
+        if (raw.data && Array.isArray(raw.data)) {
+            const colMeta = Array.isArray(raw.columns) && raw.columns.length > 0 ? raw.columns : null;
+            return { rows: raw.data, colMeta };
+        }
+        // leave_tracking: { leave_types: [...], rows: [...] }
+        if (raw.rows && Array.isArray(raw.rows)) return { rows: raw.rows, colMeta: null };
+        return { rows: [], colMeta: null };
+    };
+
     const renderTableData = () => {
         if (!data) return null;
 
-        const displayData = Array.isArray(data) ? data : (data.data && Array.isArray(data.data) ? data.data : null);
+        const { rows: displayData, colMeta } = normalizeData(data);
 
-        if (displayData) {
+        if (displayData !== null && displayData !== undefined) {
             if (displayData.length === 0) {
                 return (
                     <div className="empty-state">
@@ -273,19 +565,40 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                 );
             }
 
-            const keys = Object.keys(displayData[0]).filter(k => k !== 'prov_ins_file');
+            const keys = displayData[0] ? Object.keys(displayData[0]).filter(k => k !== 'prov_ins_file' && k !== 'is_total') : [];
+
+            // Build a header label map: field → display title
+            const headerLabel = (key: string): string => {
+                if (colMeta) {
+                    const found = colMeta.find(c => c.field === key);
+                    if (found) return found.title;
+                }
+                // Convert snake_case / camelCase to Title Case
+                return key
+                    .replace(/_/g, ' ')
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .replace(/\b\w/g, c => c.toUpperCase());
+            };
+
+            // Format cell value
+            const cellVal = (v: any): string => {
+                if (v === null || v === undefined) return '-';
+                if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+                if (typeof v === 'object') return JSON.stringify(v);
+                return String(v);
+            };
 
             let chartContent = null;
             if (viewMode === 'chart') {
                 const chartData = displayData.map((row: any) => {
-                    const newRow = { ...row };
-                    Object.keys(newRow).forEach(key => {
-                        if (typeof newRow[key] === 'string') {
-                            // Strip typical formatting chars to expose underlying number
-                            const parsed = parseFloat(newRow[key].replace(/,/g, '').replace(/^\$/, ''));
-                            if (!isNaN(parsed) && newRow[key].match(/[0-9]/) && !newRow[key].includes('-202') && !newRow[key].includes('/202')) {
-                                newRow[key] = parsed;
-                            }
+                    const newRow: any = {};
+                    keys.forEach(key => {
+                        const v = row[key];
+                        if (typeof v === 'string') {
+                            const parsed = parseFloat(v.replace(/,/g, '').replace(/^\$/, ''));
+                            newRow[key] = (!isNaN(parsed) && v.match(/[0-9]/) && !v.includes('-202') && !v.includes('/202')) ? parsed : v;
+                        } else {
+                            newRow[key] = v;
                         }
                     });
                     return newRow;
@@ -393,10 +706,35 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                             </div>
                             {isPage && (
                                 <>
-                                    <button className="btn btn-secondary" onClick={handleExport} disabled={loading} title="Export"
-                                        style={{ padding: '0.5rem', borderRadius: '0.5rem', height: 'auto', display: 'flex', minWidth: '0' }}>
-                                        <Download size={16} />
-                                    </button>
+                                    <div ref={downloadMenuRef} style={{ position: 'relative' }}>
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={() => setShowDownloadMenu(v => !v)}
+                                            disabled={loading}
+                                            title="Download"
+                                            style={{ padding: '0.5rem 0.625rem', borderRadius: '0.5rem', height: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem', minWidth: 0 }}
+                                        >
+                                            <Download size={14} />
+                                            <ChevronDown size={11} />
+                                        </button>
+                                        {showDownloadMenu && (
+                                            <div style={{
+                                                position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 200,
+                                                background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
+                                                borderRadius: '0.625rem', boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+                                                minWidth: '170px', overflow: 'hidden',
+                                            }}>
+                                                <button onClick={handleExportCSV} style={dlMenuItemStyle}>
+                                                    <FileSpreadsheet size={14} style={{ color: '#16a34a' }} />
+                                                    Download as CSV
+                                                </button>
+                                                <button onClick={handleExportPDF} style={dlMenuItemStyle}>
+                                                    <FileText size={14} style={{ color: '#dc2626' }} />
+                                                    Download as PDF
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                     <button className="btn btn-ghost" onClick={onClose} title="Back"
                                         style={{ padding: '0.5rem', borderRadius: '0.5rem', height: 'auto', display: 'flex', minWidth: '0', background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}>
                                         <ArrowLeft size={16} />
@@ -412,19 +750,15 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                                     <thead>
                                         <tr>
                                             {keys.map((key) => (
-                                                <th key={key}>
-                                                    {key.replace(/_/g, ' ')}
-                                                </th>
+                                                <th key={key}>{headerLabel(key)}</th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {displayData.map((row: any, idx: number) => (
-                                            <tr key={idx}>
+                                            <tr key={idx} style={row.is_total ? { fontWeight: 700, background: 'var(--color-bg-secondary)' } : undefined}>
                                                 {keys.map((key) => (
-                                                    <td key={key}>
-                                                        {row[key] !== null && row[key] !== undefined ? String(row[key]) : '-'}
-                                                    </td>
+                                                    <td key={key}>{cellVal(row[key])}</td>
                                                 ))}
                                             </tr>
                                         ))}
@@ -437,14 +771,7 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
             );
         }
 
-        // Handle object response (like billing ledger aging)
-        return (
-            <div className="p-6 bg-gray-50 rounded-xl border border-gray-100">
-                <pre className="text-xs text-gray-600 font-mono overflow-auto max-h-[500px] custom-scrollbar">
-                    {JSON.stringify(data, null, 2)}
-                </pre>
-            </div>
-        );
+        return null;
     };
 
     if (isPage) {
@@ -515,7 +842,52 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                                 </button>
                             </div>
                         )}
-                        {!report.requiresDateFilter && (
+                        {filterType === 'year' && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-bg-secondary)', padding: '0.25rem 0.25rem 0.25rem 0.75rem', borderRadius: '0.75rem', border: '1px solid var(--color-border)' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-tertiary)', fontWeight: 600 }}>YEAR</span>
+                                <input type="number" min="2000" max="2100"
+                                    style={{ height: '32px', width: '80px', padding: '0 0.5rem', fontSize: '0.8rem', border: '1px solid var(--color-border)', borderRadius: '0.375rem', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
+                                    value={filters.year}
+                                    onChange={(e) => setFilters({ ...filters, year: e.target.value })} />
+                                <button className="btn-run-report" onClick={handleRunReport} disabled={loading}
+                                    style={{ margin: 0, height: '32px', padding: '0 1rem', borderRadius: '0.5rem', fontSize: '0.8rem', gap: '0.375rem', boxShadow: 'none' }}>
+                                    <Filter size={14} />
+                                    Run
+                                </button>
+                            </div>
+                        )}
+                        {(filterType === 'payroll-period' || filterType === 'adp-payroll') && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-bg-secondary)', padding: '0.25rem 0.25rem 0.25rem 0.75rem', borderRadius: '0.75rem', border: '1px solid var(--color-border)' }}>
+                                {filterType === 'payroll-period' ? (
+                                    <>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--color-text-tertiary)', fontWeight: 700, whiteSpace: 'nowrap' }}>PERIOD ID</span>
+                                        <input type="number" placeholder="Pay Period ID"
+                                            style={{ height: '32px', width: '100px', padding: '0 0.5rem', fontSize: '0.8rem', border: '1px solid var(--color-border)', borderRadius: '0.375rem', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
+                                            value={filters.payroll_time}
+                                            onChange={(e) => setFilters({ ...filters, payroll_time: e.target.value })} />
+                                    </>
+                                ) : (
+                                    <>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--color-text-tertiary)', fontWeight: 700, whiteSpace: 'nowrap' }}>TILL DATE</span>
+                                        <input type="date" className="modern-date-input"
+                                            style={{ height: '32px', padding: '0 0.25rem', fontSize: '0.8rem', border: '1px solid var(--color-border)', borderRadius: '0.375rem', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', cursor: 'pointer' }}
+                                            value={filters.till_date}
+                                            onChange={(e) => setFilters({ ...filters, till_date: e.target.value })} />
+                                    </>
+                                )}
+                                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-tertiary)', fontWeight: 700, whiteSpace: 'nowrap' }}>PROVIDERS</span>
+                                <input type="text" placeholder="IDs e.g. 1,2,3"
+                                    style={{ height: '32px', width: '120px', padding: '0 0.5rem', fontSize: '0.8rem', border: '1px solid var(--color-border)', borderRadius: '0.375rem', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
+                                    value={filters.staff_provider_text}
+                                    onChange={(e) => setFilters({ ...filters, staff_provider_text: e.target.value })} />
+                                <button className="btn-run-report" onClick={handleRunReport} disabled={loading}
+                                    style={{ margin: 0, height: '32px', padding: '0 1rem', borderRadius: '0.5rem', fontSize: '0.8rem', gap: '0.375rem', boxShadow: 'none' }}>
+                                    <Filter size={14} />
+                                    Run
+                                </button>
+                            </div>
+                        )}
+                        {!needsFilter && (
                             <button className="btn btn-primary" onClick={handleRunReport} disabled={loading}
                                 style={{ height: '36px', padding: '0 1rem', borderRadius: '0.5rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <RefreshCw size={14} />
@@ -580,9 +952,15 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                                             <p className="empty-state-description">
                                                 {report.requiresDateFilter
                                                     ? 'Select date range and click "Run Report" to view data'
-                                                    : 'Loading report data...'}
+                                                    : filterType === 'year'
+                                                        ? 'Select a year and click "Run Report" to view data'
+                                                        : filterType === 'payroll-period'
+                                                            ? 'Enter Pay Period ID and Provider IDs, then click "Run Report"'
+                                                            : filterType === 'adp-payroll'
+                                                                ? 'Enter Till Date and Provider IDs, then click "Run Report"'
+                                                                : 'Loading report data...'}
                                             </p>
-                                            {!report.requiresDateFilter && (
+                                            {!needsFilter && (
                                                 <button className="btn btn-primary" onClick={handleRunReport}>
                                                     <RefreshCw size={16} />
                                                     Run Report
@@ -630,47 +1008,76 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                     ) : (
                         <div style={{ padding: 'min(2.5rem, 4vh)', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
                             {/* Filters Section */}
-                            {report.requiresDateFilter && (
+                            {needsFilter && (
                                 <div className="report-viewer-card mb-6" style={{ padding: 'min(2.5rem, 4vh)' }}>
                                     <div className="report-description">
-                                        {report.description || `Compare expected vs actual ${report.name.toLowerCase()}`}
+                                        {report.description}
                                     </div>
                                     <div className="report-filters-container">
-                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                                            <div className="filter-input-group">
-                                                <label className="filter-label">START DATE</label>
-                                                <div className="date-input-wrapper">
-                                                    <input
-                                                        type="date"
-                                                        className="modern-date-input"
-                                                        value={filters.start_date}
-                                                        onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-                                                    />
+                                        {report.requiresDateFilter && (
+                                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                                                <div className="filter-input-group">
+                                                    <label className="filter-label">START DATE</label>
+                                                    <div className="date-input-wrapper">
+                                                        <input type="date" className="modern-date-input"
+                                                            value={filters.start_date}
+                                                            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })} />
+                                                    </div>
+                                                </div>
+                                                <div className="filter-input-group">
+                                                    <label className="filter-label">END DATE</label>
+                                                    <div className="date-input-wrapper">
+                                                        <input type="date" className="modern-date-input"
+                                                            value={filters.end_date}
+                                                            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })} />
+                                                    </div>
                                                 </div>
                                             </div>
+                                        )}
+                                        {filterType === 'year' && (
                                             <div className="filter-input-group">
-                                                <label className="filter-label">END DATE</label>
-                                                <div className="date-input-wrapper">
-                                                    <input
-                                                        type="date"
-                                                        className="modern-date-input"
-                                                        value={filters.end_date}
-                                                        onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-                                                    />
+                                                <label className="filter-label">YEAR</label>
+                                                <input type="number" min="2000" max="2100"
+                                                    style={{ height: '44px', width: '120px', padding: '0 0.75rem', fontSize: '0.9rem', border: '1px solid var(--color-border)', borderRadius: '0.625rem', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
+                                                    value={filters.year}
+                                                    onChange={(e) => setFilters({ ...filters, year: e.target.value })} />
+                                            </div>
+                                        )}
+                                        {(filterType === 'payroll-period' || filterType === 'adp-payroll') && (
+                                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                                                {filterType === 'payroll-period' ? (
+                                                    <div className="filter-input-group">
+                                                        <label className="filter-label">PAY PERIOD ID</label>
+                                                        <input type="number" placeholder="e.g. 42"
+                                                            style={{ height: '44px', width: '140px', padding: '0 0.75rem', fontSize: '0.9rem', border: '1px solid var(--color-border)', borderRadius: '0.625rem', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
+                                                            value={filters.payroll_time}
+                                                            onChange={(e) => setFilters({ ...filters, payroll_time: e.target.value })} />
+                                                    </div>
+                                                ) : (
+                                                    <div className="filter-input-group">
+                                                        <label className="filter-label">TILL DATE</label>
+                                                        <div className="date-input-wrapper">
+                                                            <input type="date" className="modern-date-input"
+                                                                value={filters.till_date}
+                                                                onChange={(e) => setFilters({ ...filters, till_date: e.target.value })} />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div className="filter-input-group">
+                                                    <label className="filter-label">PROVIDER IDs (comma-separated)</label>
+                                                    <input type="text" placeholder="e.g. 1,2,3"
+                                                        style={{ height: '44px', minWidth: '200px', padding: '0 0.75rem', fontSize: '0.9rem', border: '1px solid var(--color-border)', borderRadius: '0.625rem', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
+                                                        value={filters.staff_provider_text}
+                                                        onChange={(e) => setFilters({ ...filters, staff_provider_text: e.target.value })} />
                                                 </div>
                                             </div>
-                                        </div>
+                                        )}
                                         <button className="btn-run-report" onClick={handleRunReport} disabled={loading}
                                             style={{ margin: 0, height: '44px', alignSelf: 'flex-end', padding: '0 1.5rem', borderRadius: '0.75rem' }}>
                                             <Filter size={18} />
                                             Run Report
                                         </button>
                                     </div>
-                                    {(!filters.start_date || !filters.end_date) && (
-                                        <div className="filter-help-text">
-                                            Please select both start and end dates
-                                        </div>
-                                    )}
                                 </div>
                             )}
 
@@ -713,9 +1120,15 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                                         <p className="empty-state-description">
                                             {report.requiresDateFilter
                                                 ? 'Select date range and click "Run Report" to view data'
-                                                : 'Click "Run Report" to view data'}
+                                                : filterType === 'year'
+                                                    ? 'Select a year and click "Run Report" to view data'
+                                                    : filterType === 'payroll-period'
+                                                        ? 'Enter Pay Period ID and Provider IDs, then click "Run Report"'
+                                                        : filterType === 'adp-payroll'
+                                                            ? 'Enter Till Date and Provider IDs, then click "Run Report"'
+                                                            : 'Click "Run Report" to view data'}
                                         </p>
-                                        {!report.requiresDateFilter && (
+                                        {!needsFilter && (
                                             <button className="btn btn-primary" onClick={handleRunReport}>
                                                 <RefreshCw size={18} />
                                                 Run Report
@@ -733,10 +1146,35 @@ export default function ReportViewer({ report, onClose, isPage = false }: Report
                         Close
                     </button>
                     {data && (
-                        <button className="btn btn-primary" onClick={handleExport} disabled={loading}>
-                            <Download size={18} />
-                            Export
-                        </button>
+                        <div ref={downloadMenuRef} style={{ position: 'relative' }}>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => setShowDownloadMenu(v => !v)}
+                                disabled={loading}
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+                            >
+                                <Download size={16} />
+                                Download
+                                <ChevronDown size={13} />
+                            </button>
+                            {showDownloadMenu && (
+                                <div style={{
+                                    position: 'absolute', bottom: 'calc(100% + 6px)', right: 0, zIndex: 200,
+                                    background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
+                                    borderRadius: '0.625rem', boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+                                    minWidth: '170px', overflow: 'hidden',
+                                }}>
+                                    <button onClick={handleExportCSV} style={dlMenuItemStyle}>
+                                        <FileSpreadsheet size={14} style={{ color: '#16a34a' }} />
+                                        Download as CSV
+                                    </button>
+                                    <button onClick={handleExportPDF} style={dlMenuItemStyle}>
+                                        <FileText size={14} style={{ color: '#dc2626' }} />
+                                        Download as PDF
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

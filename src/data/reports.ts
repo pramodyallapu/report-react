@@ -6,6 +6,7 @@ export interface Report {
     lastVisited?: string;
     description?: string;
     requiresDateFilter?: boolean;
+    filterType?: 'year' | 'payroll-period' | 'adp-payroll';
     apiEndpoint?: string;
     columns?: string[];
     isCustom?: boolean;
@@ -19,8 +20,10 @@ export interface ReportCategory {
     reports: Report[];
 }
 
-// All available reports organized by category
 export const reportCategories: ReportCategory[] = [
+    // ─────────────────────────────────────────────
+    // STAFF
+    // ─────────────────────────────────────────────
     {
         id: 'staff',
         name: 'Staff',
@@ -42,6 +45,22 @@ export const reportCategories: ReportCategory[] = [
                 createdBy: 'System Generated',
                 description: 'Staff members with incomplete credential information',
                 apiEndpoint: '/api/admin/staffs/missing_credentials',
+            },
+            {
+                id: 'missing-credential-files',
+                name: 'Staff Missing Credential Files',
+                category: 'Staff',
+                createdBy: 'System Generated',
+                description: 'Staff members who are missing required credential file uploads',
+                apiEndpoint: '/api/admin/staffs/missing_credential_files',
+            },
+            {
+                id: 'missing-other-document-files',
+                name: 'Staff Missing Document Files',
+                category: 'Staff',
+                createdBy: 'System Generated',
+                description: 'Staff members who are missing required other document uploads',
+                apiEndpoint: '/api/admin/staffs/missing_other_document_files',
             },
             {
                 id: 'expiring-credentials',
@@ -70,8 +89,21 @@ export const reportCategories: ReportCategory[] = [
                 requiresDateFilter: true,
                 apiEndpoint: '/api/admin/staffs/provider_missing_sign',
             },
+            {
+                id: 'bcba-billable-kpi',
+                name: 'BCBA Billable KPI',
+                category: 'Staff',
+                createdBy: 'System Generated',
+                description: 'Key performance indicators for BCBA billable hours and targets',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/staffs/bcba_billable_kpi',
+            },
         ],
     },
+
+    // ─────────────────────────────────────────────
+    // PATIENTS
+    // ─────────────────────────────────────────────
     {
         id: 'patients',
         name: 'Patients',
@@ -103,6 +135,15 @@ export const reportCategories: ReportCategory[] = [
                 createdBy: 'System Generated',
                 description: 'Patients who do not have active authorizations',
                 apiEndpoint: '/api/admin/patients/without_auth',
+            },
+            {
+                id: 'patients-without-schedules',
+                name: 'Patients Without Schedules',
+                category: 'Patients',
+                createdBy: 'System Generated',
+                description: 'Active patients who have no upcoming sessions scheduled',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/patients/patients_without_schedules',
             },
             {
                 id: 'expiring-doc',
@@ -141,6 +182,10 @@ export const reportCategories: ReportCategory[] = [
             },
         ],
     },
+
+    // ─────────────────────────────────────────────
+    // APPOINTMENTS
+    // ─────────────────────────────────────────────
     {
         id: 'appointments',
         name: 'Appointments',
@@ -192,8 +237,95 @@ export const reportCategories: ReportCategory[] = [
                 requiresDateFilter: true,
                 apiEndpoint: '/api/admin/appointments/session_unlocked_notes',
             },
+            {
+                id: 'rendered-not-billed',
+                name: 'Rendered but Not Billed',
+                category: 'Appointments',
+                createdBy: 'System Generated',
+                description: 'Sessions that have been rendered but not yet billed',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/sessions/rendered_not_billed',
+            },
         ],
     },
+
+    // ─────────────────────────────────────────────
+    // APPOINTMENT DETAILS
+    // ─────────────────────────────────────────────
+    {
+        id: 'appointment-details',
+        name: 'Appointment Details',
+        icon: 'BarChart3',
+        reports: [
+            {
+                id: 'appt-details-total',
+                name: 'Total Appointment Details',
+                category: 'Appointment Details',
+                createdBy: 'System Generated',
+                description: 'Comprehensive total appointment details across all types',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/appointment_details/total',
+            },
+            {
+                id: 'appt-details-billable',
+                name: 'Billable Appointment Details',
+                category: 'Appointment Details',
+                createdBy: 'System Generated',
+                description: 'Detailed breakdown of billable appointments',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/appointment_details/billable',
+            },
+            {
+                id: 'appt-details-nonbillable',
+                name: 'Non-Billable Appointment Details',
+                category: 'Appointment Details',
+                createdBy: 'System Generated',
+                description: 'Detailed breakdown of non-billable appointments',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/appointment_details/nonbillable',
+            },
+            {
+                id: 'appt-details-employee-wise',
+                name: 'Appointment Details by Employee',
+                category: 'Appointment Details',
+                createdBy: 'System Generated',
+                description: 'Appointment details grouped and summarized by employee',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/appointment_details/employee_wise',
+            },
+            {
+                id: 'appt-details-patient-wise',
+                name: 'Appointment Details by Patient',
+                category: 'Appointment Details',
+                createdBy: 'System Generated',
+                description: 'Appointment details grouped and summarized by patient',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/appointment_details/patient_wise',
+            },
+            {
+                id: 'appt-details-overtime',
+                name: 'Overtime Appointment Details',
+                category: 'Appointment Details',
+                createdBy: 'System Generated',
+                description: 'Appointment and hours that qualify as overtime',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/appointment_details/overtime',
+            },
+            {
+                id: 'appointment-count-by-month',
+                name: 'Appointment Count by Month',
+                category: 'Appointment Details',
+                createdBy: 'System Generated',
+                description: 'Monthly appointment volume and count analysis',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/appointment_count_by_month',
+            },
+        ],
+    },
+
+    // ─────────────────────────────────────────────
+    // RECEIVABLES
+    // ─────────────────────────────────────────────
     {
         id: 'receivables',
         name: 'Receivables',
@@ -217,8 +349,75 @@ export const reportCategories: ReportCategory[] = [
                 requiresDateFilter: true,
                 apiEndpoint: '/api/admin/reports/ar_ledger_with_balance',
             },
+            {
+                id: 'ar-ledger-production-hourly',
+                name: 'AR Ledger Production (Hourly)',
+                category: 'Receivables',
+                createdBy: 'System Generated',
+                description: 'Hourly production breakdown from the AR ledger',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/ar_ledger_production_hourly',
+            },
+            {
+                id: 'billing-production-hourly',
+                name: 'Billing Production (Hourly)',
+                category: 'Receivables',
+                createdBy: 'System Generated',
+                description: 'Hourly billing production analysis',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/billing_production_hourly',
+            },
+            {
+                id: 'deposit-production-hourly',
+                name: 'Deposit Production (Hourly)',
+                category: 'Receivables',
+                createdBy: 'System Generated',
+                description: 'Hourly deposit production report',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/deposit_production_hourly',
+            },
+            {
+                id: 'manage-secondary-claims',
+                name: 'Manage Secondary Claims',
+                category: 'Receivables',
+                createdBy: 'System Generated',
+                description: 'View and manage outstanding secondary insurance claims',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/manage_secondary_claims',
+            },
+            {
+                id: 'sftp-push-pending-batches',
+                name: 'SFTP Push Pending Batches',
+                category: 'Receivables',
+                createdBy: 'System Generated',
+                description: 'Claim batches pending SFTP submission',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/sftp_push_pending_batches',
+            },
+            {
+                id: 'concurrent-billing',
+                name: 'Concurrent Billing',
+                category: 'Receivables',
+                createdBy: 'System Generated',
+                description: 'Detect and review concurrent billing occurrences',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/concurrent_billing',
+            },
+            {
+                id: 'cpt-icd-billed-vs-invoice',
+                name: 'CPT / ICD Billed vs Invoice',
+                category: 'Receivables',
+                createdBy: 'System Generated',
+                description: 'Compare CPT and ICD codes billed against invoice records',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/cpt_icd_billed_vs_invoice',
+            },
         ],
     },
+
+    // ─────────────────────────────────────────────
+    // FINANCIAL & KPI
+    // ─────────────────────────────────────────────
     {
         id: 'financial-kpi',
         name: 'Financial & KPI',
@@ -241,6 +440,22 @@ export const reportCategories: ReportCategory[] = [
                 description: 'Track payment deposits and transactions',
                 requiresDateFilter: true,
                 apiEndpoint: '/api/admin/reports/payment_deposits',
+            },
+            {
+                id: 'last-week-deposits',
+                name: 'Last Week Deposits',
+                category: 'Financial & KPI',
+                createdBy: 'System Generated',
+                description: 'Summary of all payment deposits from last week',
+                apiEndpoint: '/api/admin/reports/last_week_deposits',
+            },
+            {
+                id: 'last-month-statements',
+                name: 'Last Month Statements',
+                category: 'Financial & KPI',
+                createdBy: 'System Generated',
+                description: 'Financial statements generated for last month',
+                apiEndpoint: '/api/admin/reports/last_month_statements',
             },
             {
                 id: 'kpi-by-month',
@@ -269,8 +484,95 @@ export const reportCategories: ReportCategory[] = [
                 requiresDateFilter: true,
                 apiEndpoint: '/api/admin/reports/kpi_by_insurance',
             },
+            {
+                id: 'profit-loss-by-service',
+                name: 'Profit & Loss by Service',
+                category: 'Financial & KPI',
+                createdBy: 'System Generated',
+                description: 'Profit and loss analysis broken down by service type',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/profit_loss/by_service',
+            },
+            {
+                id: 'profit-loss-by-provider',
+                name: 'Profit & Loss by Provider',
+                category: 'Financial & KPI',
+                createdBy: 'System Generated',
+                description: 'Profit and loss analysis broken down by provider',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/profit_loss/by_provider',
+            },
+            {
+                id: 'client-service-summary',
+                name: 'Client Service Summary',
+                category: 'Financial & KPI',
+                createdBy: 'System Generated',
+                description: 'Summary of services rendered per client',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/client_service_summary',
+            },
+            {
+                id: 'xero-report',
+                name: 'Xero Report',
+                category: 'Financial & KPI',
+                createdBy: 'System Generated',
+                description: 'Financial data export formatted for Xero accounting',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/xero_report',
+            },
+            {
+                id: 'leave-tracking',
+                name: 'Leave Tracking',
+                category: 'Financial & KPI',
+                createdBy: 'System Generated',
+                description: 'Track employee leave usage and balances by year',
+                filterType: 'year',
+                apiEndpoint: '/api/admin/reports/leave_tracking',
+            },
         ],
     },
+
+    // ─────────────────────────────────────────────
+    // SUPERVISION
+    // ─────────────────────────────────────────────
+    {
+        id: 'supervision',
+        name: 'Supervision',
+        icon: 'Target',
+        reports: [
+            {
+                id: 'supervision-rbt-wise',
+                name: 'Supervision by RBT',
+                category: 'Supervision',
+                createdBy: 'System Generated',
+                description: 'Supervision hours and compliance tracked per RBT',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/supervision_rbt_wise',
+            },
+            {
+                id: 'supervision-patient-wise',
+                name: 'Supervision by Patient',
+                category: 'Supervision',
+                createdBy: 'System Generated',
+                description: 'Supervision hours tracked per patient',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/supervision_patient_wise',
+            },
+            {
+                id: 'supervision-per-staff',
+                name: 'Supervision per Staff',
+                category: 'Supervision',
+                createdBy: 'System Generated',
+                description: 'Total supervision hours and ratios per staff member',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/supervision_per_staff',
+            },
+        ],
+    },
+
+    // ─────────────────────────────────────────────
+    // ABA HOURS
+    // ─────────────────────────────────────────────
     {
         id: 'aba-hours',
         name: 'ABA Hours',
@@ -296,6 +598,10 @@ export const reportCategories: ReportCategory[] = [
             },
         ],
     },
+
+    // ─────────────────────────────────────────────
+    // BILLING & LEDGER
+    // ─────────────────────────────────────────────
     {
         id: 'billing-ledger',
         name: 'Billing & Ledger',
@@ -330,6 +636,10 @@ export const reportCategories: ReportCategory[] = [
             },
         ],
     },
+
+    // ─────────────────────────────────────────────
+    // PAYROLL
+    // ─────────────────────────────────────────────
     {
         id: 'payroll',
         name: 'Payroll',
@@ -371,8 +681,66 @@ export const reportCategories: ReportCategory[] = [
                 requiresDateFilter: true,
                 apiEndpoint: '/api/admin/reports/ratewise_payroll_summary',
             },
+            {
+                id: 'gusto-payroll',
+                name: 'Gusto Payroll',
+                category: 'Payroll',
+                createdBy: 'System Generated',
+                description: 'Payroll data for Gusto — select pay period and providers',
+                filterType: 'payroll-period',
+                apiEndpoint: '/api/admin/reports/gusto_payroll',
+            },
+            {
+                id: 'adp-payroll',
+                name: 'ADP Payroll',
+                category: 'Payroll',
+                createdBy: 'System Generated',
+                description: 'Payroll data for ADP — select till date and providers',
+                filterType: 'adp-payroll',
+                apiEndpoint: '/api/admin/reports/adp_payroll',
+            },
+            {
+                id: 'bamboohr-payroll',
+                name: 'BambooHR Payroll',
+                category: 'Payroll',
+                createdBy: 'System Generated',
+                description: 'Payroll data for BambooHR — select pay period and provider',
+                filterType: 'payroll-period',
+                apiEndpoint: '/api/admin/reports/bamboohr_payroll',
+            },
+            {
+                id: 'fingercheck-payroll',
+                name: 'Fingercheck Payroll',
+                category: 'Payroll',
+                createdBy: 'System Generated',
+                description: 'Payroll data formatted for Fingercheck integration',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/fingercheck_payroll',
+            },
+            {
+                id: 'paychex-payroll',
+                name: 'Paychex Payroll',
+                category: 'Payroll',
+                createdBy: 'System Generated',
+                description: 'Payroll data formatted for Paychex integration',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/paychex_payroll',
+            },
+            {
+                id: 'paycom-report',
+                name: 'Paycom Report',
+                category: 'Payroll',
+                createdBy: 'System Generated',
+                description: 'Payroll and HR data formatted for Paycom integration',
+                requiresDateFilter: true,
+                apiEndpoint: '/api/admin/reports/paycom_report',
+            },
         ],
     },
+
+    // ─────────────────────────────────────────────
+    // EXPECTED PR
+    // ─────────────────────────────────────────────
     {
         id: 'expected-pr',
         name: 'Expected PR',
@@ -391,29 +759,27 @@ export const reportCategories: ReportCategory[] = [
     },
 ];
 
-// Get all reports flattened
-export const getAllReports = (): Report[] => {
-    return reportCategories.flatMap((category) => category.reports);
-};
+// ─────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────
 
-// Get reports by category
+export const getAllReports = (): Report[] =>
+    reportCategories.flatMap((category) => category.reports);
+
 export const getReportsByCategory = (categoryId: string): Report[] => {
     const category = reportCategories.find((cat) => cat.id === categoryId);
     return category?.reports || [];
 };
 
-// Search reports
 export const searchReports = (query: string): Report[] => {
-    const lowercaseQuery = query.toLowerCase();
+    const q = query.toLowerCase();
     return getAllReports().filter(
         (report) =>
-            report.name.toLowerCase().includes(lowercaseQuery) ||
-            report.category.toLowerCase().includes(lowercaseQuery) ||
-            report.description?.toLowerCase().includes(lowercaseQuery)
+            report.name.toLowerCase().includes(q) ||
+            report.category.toLowerCase().includes(q) ||
+            report.description?.toLowerCase().includes(q)
     );
 };
 
-// Get report by ID
-export const getReportById = (id: string): Report | undefined => {
-    return getAllReports().find((report) => report.id === id);
-};
+export const getReportById = (id: string): Report | undefined =>
+    getAllReports().find((report) => report.id === id);

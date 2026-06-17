@@ -40,11 +40,10 @@ export const authAPI = {
         const formData = new URLSearchParams();
         formData.append('email', email);
         formData.append('password', password);
-        // POST /login → server returns 302 → axios follows to / → cookie is set
-        // We don't use the response body; any non-error = success
-        await apiClient.post('/login', formData, {
+        const response = await apiClient.post('/api/login', formData, {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         });
+        return response.data;
     },
     logout: async () => {
         const response = await apiClient.post('/logout');
